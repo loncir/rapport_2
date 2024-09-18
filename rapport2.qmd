@@ -1,0 +1,129 @@
+---
+title: "rapport_2"
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+#Part1 - lactate thresholds
+
+```{r}
+
+library(tidyverse)
+library(exscidata)
+
+data("cyclingstudy")
+
+
+dat <- cyclingstudy %>%
+  # Select columns needed for analysis
+  select(subject, group, timepoint, lac.125:lac.375) %>%
+  # Only one participant and time-point
+  filter(timepoint == "pre", subject == 10) %>%
+  # Pivot to long format data using the lactate columns
+  pivot_longer(names_to = "watt", 
+               values_to = "lactate", 
+               names_prefix = "lac.",
+               names_transform = list(watt = as.numeric),
+               cols = lac.125:lac.375) %>%
+  # Plot the data, group = subject needed to connect the points
+  ggplot(aes(watt, lactate, group = subject))  + 
+  geom_line(lty = 2) +
+  geom_point(shape = 21, fill = "lightblue", size = 2.5) +
+  geom_hline(yintercept = 4, color = "red") +
+  geom_vline(xintercept = 341.5, color = "blue") + 
+  
+  geom_hline(yintercept = 2, color = "red") +
+  geom_vline(xintercept = 308.5, color = "blue") 
+
+
+lactate <- cyclingstudy %>%
+  # Select columns needed for analysis
+  select(subject, group, timepoint, lac.225:lac.375) %>%
+  # Only one participant and time-point
+  filter(timepoint == "pre", subject == 10) %>%
+  # Pivot to long format data using the lactate columns
+  pivot_longer(names_to = "watt", 
+               values_to = "lactate", 
+               names_prefix = "lac.",
+               names_transform = list(watt = as.numeric),
+               cols = lac.225:lac.375) %>%
+  # Remove NA (missing) values to avoid warning/error messages.
+  filter(!is.na(lactate))
+
+# fit "straight line" model
+m1 <- lm(lactate ~ watt, data = lactate)
+
+# fit second degree polynomial
+m2 <- lm(lactate ~ poly(watt, 2, raw = TRUE), data = lactate)
+
+# fit third degree polynomial
+m3 <- lm(lactate ~ poly(watt, 3, raw = TRUE), data = lactate)
+
+# fit forth degree polynomial
+m4 <- lm(lactate ~ poly(watt, 4, raw = TRUE), data = lactate)
+
+# Store all residuals as new variables
+lactate$resid.m1 <- resid(m1)
+lactate$resid.m2 <- resid(m2)
+lactate$resid.m3 <- resid(m3)
+lactate$resid.m4 <- resid(m4)
+
+lactate %>%
+  # gather all the data from the models
+  pivot_longer(names_to = "model", 
+               values_to = "residual", 
+               names_prefix = "resid.", 
+               names_transform = list(residual = as.numeric), 
+               cols = resid.m1:resid.m4) %>%
+  # Plot values with the observed watt on x axis and residual values at the y
+  ggplot(aes(watt, residual, fill = model)) + geom_point(shape = 21, size = 3) +
+  
+  # To set the same colors/fills as above we use scale fill manual
+  scale_fill_manual(values = c("#e41a1c", "#377eb8", "#4daf4a", "#ff7f00"))
+
+ndf <- data.frame(watt = seq(from = 225, to = 350, by = 0.1)) # high resolution, we can find the nearest10:th a watt
+
+ndf$predictions <- predict(m3, newdata = ndf)
+
+# Which value of the predictions comes closest to our value of 4 mmol L-1?
+# abs finds the absolute value, makes all values positive, 
+# predictions - 4 givs an exact prediction of 4 mmol the value zero
+# filter the row which has the prediction - 4 equal to the minimal absolut difference between prediction and 4 mmol
+lactate_threshold_4 <- ndf %>%
+  filter(abs(predictions - 4) == min(abs(predictions - 4))) %>% print()
+
+lactate_threshold_2 <- ndf %>%
+  filter(abs(predictions - 2) == min(abs(predictions - 2))) %>% print()
+
+```
+
+
+
+
+# Part 2: Predicting sizes of DNA fragments, or slopes of a qPCR calibration curve
+
+```{r}
+
+ladder <- data.frame(dist = c(440, 468.5, 497.5, 533.5, 569.5, 624.5, 682.5,
+                              762.5, 808.5, 860.5, 926.5, 995.5, 736.5),
+                     mw = c(100, 900, 800, 700, 600, 500, 400, 300, 250, 200, 
+                            150, 100, 50))
+
+unknown <- data.frame(dist = c(180.5, 1034.5, 1084.5, 359.5, 440.5))
+
+cal <- lm(log(mw) ~ dist, data = ladder)
+summary(cal)
+
+preds <- exp(predict(cal, newdata = unknown))
+
+```
+
+
+
+
+# Part 3: Intepreting a regression table 
+
+library(exscidata)
+data("hypertrophy")
+
